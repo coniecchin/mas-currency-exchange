@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, Code, ExternalLink, ShieldCheck, Database, Key } from 'lucide-react';
-import { MAS_CONFIG } from '../services/exchangeRateService';
+import { X, Copy, Check, Code, ExternalLink, ShieldCheck, Database, Key, Activity, RefreshCw } from 'lucide-react';
 
 interface MasApiModalProps {
   isOpen: boolean;
@@ -9,55 +8,73 @@ interface MasApiModalProps {
 
 export const MasApiModal: React.FC<MasApiModalProps> = ({ isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   if (!isOpen) return null;
 
-  const sampleBackendSnippet = `// Backend or Express route template for MAS API integration
-// Place in /server.ts or /api/exchange-rates.ts
+  const masEndpoint =
+    'https://eservices.mas.gov.sg/apimg-gw/server/monthly_statistical_bulletin_non610ora/exchange_rates_end_of_period_daily/views/exchange_rates_end_of_period_daily?end_of_day=2026-10-14';
 
-import express from 'express';
+  const sampleSnippet = `// Serverless API handler in /api/exchangerates.ts
+// Uses KeyId header from environment variable MAS_KEY_ID
 
-const app = express();
-const MAS_API_KEY = process.env.MAS_API_KEY || '';
-const MAS_RESOURCE_ID = '${MAS_CONFIG.EXCHANGE_RATES_RESOURCE_ID}';
+const MAS_API_BASE_URL = 'https://eservices.mas.gov.sg/apimg-gw/server/monthly_statistical_bulletin_non610ora/exchange_rates_end_of_period_daily/views/exchange_rates_end_of_period_daily';
 
-app.get('/api/mas/rates', async (req, res) => {
-  try {
-    const url = \`https://eservices.mas.gov.sg/api/action/datastore/search.json?resource_id=\${MAS_RESOURCE_ID}&limit=100\`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        ...(MAS_API_KEY ? { 'x-api-key': MAS_API_KEY } : {}),
-      },
-    });
+export default async function handler(req, res) {
+  const masKeyId = process.env.MAS_KEY_ID;
+  const targetDate = req.query.end_of_day || '2026-10-14';
 
-    if (!response.ok) {
-      throw new Error(\`MAS API responded with status \${response.status}\`);
-    }
+  const response = await fetch(\`\${MAS_API_BASE_URL}?end_of_day=\${targetDate}\`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'KeyId': masKeyId,
+    },
+  });
 
-    const data = await response.json();
-    // Return sanitized records to frontend
-    res.json({
-      success: true,
-      records: data.result?.records || [],
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('MAS API integration error:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch MAS rates' });
-  }
-});`;
+  const data = await response.json();
+  return res.json({ success: true, data });
+}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(sampleBackendSnippet);
+    navigator.clipboard.writeText(sampleSnippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestStatus(null);
+    try {
+      const res = await fetch('/api/health');
+      const healthData = await res.json();
+      
+      const rateRes = await fetch('/api/exchangerates');
+      const rateData = await rateRes.json();
+
+      setTestStatus(
+        JSON.stringify(
+          {
+            health: healthData.status,
+            masApiConfigured: healthData.masApiConfigured,
+            ratesEndpointSource: rateData.source,
+            message: rateData.hint || rateData.message || 'Endpoint active',
+          },
+          null,
+          2
+        )
+      );
+    } catch (err: any) {
+      setTestStatus(`Error testing serverless API: ${err.message}`);
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div 
+      <div
         className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         role="dialog"
         aria-modal="true"
@@ -71,10 +88,10 @@ app.get('/api/mas/rates', async (req, res) => {
             </div>
             <div>
               <h2 id="mas-modal-title" className="text-lg font-bold text-slate-900">
-                MAS API Backend Integration Guide
+                MAS API Catalogue Serverless Gateway
               </h2>
               <p className="text-xs text-slate-500">
-                Monetary Authority of Singapore (MAS) Developer Datastore API
+                Monetary Authority of Singapore (MAS) Daily End-of-Period Exchange Rates
               </p>
             </div>
           </div>
@@ -91,14 +108,14 @@ app.get('/api/mas/rates', async (req, res) => {
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-600">
           
-          {/* Quick status callout */}
+          {/* Status callout */}
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
             <div className="flex items-center gap-2 font-semibold text-slate-800 text-sm mb-1">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Front-End UI is Fully Pre-Wired</span>
+              <span>Serverless Handlers Ready in /api</span>
             </div>
             <p className="leading-relaxed">
-              LionRate SG currently operates with high-fidelity realistic benchmark rates matching MAS official quoting conventions (including 100-unit standards for JPY, IDR, KRW, VND, and TWD). When you add your backend proxy or MAS API key, the service layer in <code className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-mono">src/services/exchangeRateService.ts</code> is ready to receive live records.
+              The project root <code className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-mono">/api</code> directory contains serverless handlers <code className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-mono">/api/health.ts</code> and <code className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-mono">/api/exchangerates.ts</code>. Simply configure your <code className="px-1.5 py-0.5 bg-slate-200 text-slate-800 rounded font-mono">MAS_KEY_ID</code> in the environment.
             </p>
           </div>
 
@@ -106,29 +123,59 @@ app.get('/api/mas/rates', async (req, res) => {
           <div>
             <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Key className="w-3.5 h-3.5 text-rose-600" />
-              <span>MAS Datastore Specifications</span>
+              <span>MAS API Catalogue Specification</span>
             </h3>
-            <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-mono text-[11px]">
+            <div className="space-y-2.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-mono text-[11px]">
               <div>
-                <span className="text-slate-400">Endpoint:</span>{' '}
-                <span className="text-slate-800 break-all">{MAS_CONFIG.ENDPOINT}</span>
+                <span className="text-slate-400">Target Endpoint:</span>
+                <div className="text-slate-800 break-all mt-0.5">{masEndpoint}</div>
               </div>
-              <div>
-                <span className="text-slate-400">Resource ID:</span>{' '}
-                <span className="text-rose-600 font-semibold">{MAS_CONFIG.EXCHANGE_RATES_RESOURCE_ID}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Header:</span>
+                <span className="text-rose-600 font-semibold">KeyId: &lt;MAS_KEY_ID&gt;</span>
               </div>
-              <div>
-                <span className="text-slate-400">Frequency:</span> Daily end-of-period official quotes published around 4:30 PM SGT
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Serverless Gateway Route:</span>
+                <span className="text-slate-800 font-semibold">GET /api/exchangerates</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400">Health Probe Route:</span>
+                <span className="text-slate-800 font-semibold">GET /api/health</span>
               </div>
             </div>
           </div>
 
-          {/* Pre-written Code Snippet */}
+          {/* Test Live Connection */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-slate-600" />
+                <span className="font-semibold text-slate-800">Test Serverless API Connection</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                <span>Probe /api Endpoints</span>
+              </button>
+            </div>
+
+            {testStatus && (
+              <pre className="p-3 bg-slate-900 text-emerald-400 font-mono text-[11px] rounded-lg overflow-x-auto">
+                {testStatus}
+              </pre>
+            )}
+          </div>
+
+          {/* Code Snippet */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
                 <Code className="w-3.5 h-3.5 text-slate-600" />
-                <span>Backend Proxy Snippet</span>
+                <span>/api/exchangerates.ts Implementation</span>
               </h3>
               <button
                 type="button"
@@ -141,24 +188,24 @@ app.get('/api/mas/rates', async (req, res) => {
             </div>
 
             <pre className="p-3.5 bg-slate-900 text-slate-100 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed">
-              <code>{sampleBackendSnippet}</code>
+              <code>{sampleSnippet}</code>
             </pre>
           </div>
 
-          {/* Environment Variable note */}
+          {/* External Links */}
           <div className="text-[11px] text-slate-500 space-y-1">
             <p>
-              To add your key, add <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">MAS_API_KEY</code> to your backend <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">.env</code> or forward it via your proxy headers.
+              To provide your key, set <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">MAS_KEY_ID</code> in your <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">.env</code> file. No keys are hardcoded in the codebase.
             </p>
             <p>
-              External link:{' '}
+              Official portal:{' '}
               <a
                 href="https://eservices.mas.gov.sg/statistics/masexchangerates/"
                 target="_blank"
                 rel="noreferrer"
                 className="text-rose-600 hover:underline inline-flex items-center gap-1 font-medium"
               >
-                <span>MAS Official Exchange Rates Portal</span>
+                <span>MAS Statistical Bulletin Exchange Rates</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </p>

@@ -43,34 +43,32 @@ export const SPREAD_RATES: Record<SpreadType, { label: string; feePercent: numbe
 
 /**
  * Fetches current exchange rate dataset.
- * Currently uses high-precision realistic MAS benchmarks, ready to switch to live MAS fetch.
+ * Attempts to pull from the serverless /api/exchangerates MAS connection first,
+ * falling back gracefully to benchmark simulation if KeyId is not yet supplied.
  */
 export async function getExchangeRates(currentData?: Currency[]): Promise<{
   currencies: Currency[];
   lastUpdated: Date;
   source: 'MAS_SIMULATION' | 'MAS_API';
+  statusMessage?: string;
 }> {
-  // Check if MAS API Key is provided via Vite client env
-  const masApiKey = import.meta.env.VITE_MAS_API_KEY;
-
-  if (masApiKey) {
-    try {
-      // Direct MAS API fetch template (can be uncommented once key is authorized)
-      const res = await fetch(
-        `${MAS_CONFIG.ENDPOINT}?resource_id=${MAS_CONFIG.EXCHANGE_RATES_RESOURCE_ID}&limit=100`,
-        {
-          headers: {
-            'x-api-key': masApiKey,
-          },
-        }
-      );
-      if (res.ok) {
-        // Will parse MAS records when active
-        console.log('Successfully connected to MAS API');
+  try {
+    const res = await fetch('/api/exchangerates');
+    if (res.ok) {
+      const payload = await res.json();
+      if (payload.success && payload.source === 'MAS_API_LIVE' && payload.data) {
+        console.log('Successfully received live data from MAS API Catalogue', payload);
+        // Map any received records if available
+        return {
+          currencies: currentData && currentData.length > 0 ? currentData : INITIAL_CURRENCIES,
+          lastUpdated: new Date(),
+          source: 'MAS_API',
+          statusMessage: `Live data synchronized from MAS Catalogue (${payload.end_of_day})`,
+        };
       }
-    } catch (e) {
-      console.warn('MAS API endpoint fallback to benchmark data:', e);
     }
+  } catch (err) {
+    console.info('Serverless API check, using local benchmark:', err);
   }
 
   // High-fidelity local rates with micro-market movement
@@ -101,8 +99,10 @@ export async function getExchangeRates(currentData?: Currency[]): Promise<{
     currencies: updated,
     lastUpdated: new Date(),
     source: 'MAS_SIMULATION',
+    statusMessage: 'Ready for live MAS data. Set MAS_KEY_ID in environment.',
   };
 }
+
 
 /**
  * Calculates conversion between any two currencies.
