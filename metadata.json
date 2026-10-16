@@ -1,0 +1,7 @@
+{
+  "name": "LionRate SG - Singapore Dollar (SGD) Live Exchange Rates & Calculator",
+  "description": "Real-time Singapore Dollar (SGD) exchange rates and conversion tool aligned with MAS standards, featuring instant currency calculator, search, and customizable favorites.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
